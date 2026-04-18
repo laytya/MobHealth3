@@ -1,23 +1,11 @@
 --[[
 	MobHealth3!
-		"Man, this mofo lasts forever!" "Dude, it only has 700hp and you're a paladin -_-"
+		
 
 	By Neronix of Hellscream EU
 		With tons of contributions by Mikk
 
-	Special thanks to the following:
-		Mikk for writing the algorithm used now, helping with the metamethod proxy and for some optimisation info
-		Vika for creating the algorithm used in the frst 4 generations of this mod. Traces of it still remain today
-		Cladhaire, the current WatchDog maintainer for giving me permission to use Vika's algorithm
-		Ckknight for the pseudo event handler idea used in the second generation
-		Mikma for risking wiping his UBRS raid while testing the really borked first generation
-		Subyara of Hellscream EU for helping me test whether UnitPlayerControlled returns 1 for MC'd mobs
-		Iceroth for his feedback on how to solve the event handler order problem in the first generation
-		AndreasG for his feedback on how to solve the event handler order problem in the first generation and for being the first person to support MH3 in his mod
-		Worf for his input on what the API should be like
-		All the idlers in #wowace for testing and feedback
-
-	API Documentation: http://wiki.wowace.com/index.php/MobHealth3_API_Documentation
+	Forked and updated by Mirasu for Kronos 4 
 --]]
 
 MobHealth3 = AceLibrary("AceAddon-2.0"):new("AceEvent-2.0", "AceConsole-2.0", "AceDB-2.0")
@@ -132,7 +120,7 @@ function MobHealth3:OnInitialize()
             end
         end
 
-        -- 2. TARGET OF TARGET (Optional)
+        -- 2. TARGET OF TARGET (Optional) untested
         if TargetofTargetFrame and TargetofTargetFrame:IsVisible() then
              local c, m, found = MobHealth3:GetUnitHealth("targettarget")
              if found then

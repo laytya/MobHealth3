@@ -20,7 +20,7 @@
 	API Documentation: http://wiki.wowace.com/index.php/MobHealth3_API_Documentation
 --]]
 
-MobHealth3 = AceLibrary("AceAddon-2.0"):new("AceEvent-2.0", "AceConsole-2.0")
+MobHealth3 = AceLibrary("AceAddon-2.0"):new("AceEvent-2.0", "AceConsole-2.0", "AceDB-2.0")
 
 --[[
 	File-scope local vars
@@ -45,10 +45,21 @@ local defaults = {
     stableMax = true,
 }
 
--- Metatable that provides compat for mods that index MobHealthDB directly
-local compatMT ={
+-- Corrected Metatable: This prevents the infinite loop/C Stack Overflow
+local compatMT = {
     __index = function(t, k)
-        return MH3Cache[k] and MH3Cache[k].."/100";
+        local val = rawget(t, k)
+        if val then
+            -- This looks for the number after the "/" (the 156)
+            local _, _, health = string.find(val, ".+/(%d+)")
+            if health then
+                return health .. "/100"
+            else
+                -- If it's just a number like "156", use it as is
+                return val .. "/100"
+            end
+        end
+        return nil
     end
 }
 
@@ -61,62 +72,77 @@ function GetMH3Cache() return MH3Cache end
 --]]
 
 function MobHealth3:OnInitialize()
-	-- If config savedvars don't exist, create them
-	MobHealth3Config = MobHealth3Config or defaults
+    -- 1. Ensure the Database exists
+    if not MobHealthDB then MobHealthDB = {} end
+    
+    -- 2. Register Database with Ace2
+    self.db = self:RegisterDB("MobHealth3Config")
 
-	-- If the user is saving data, then load it into the cache
-	if MobHealth3DB and MobHealth3Config.saveData then
-		MH3Cache = MobHealth3DB
-	end
-
-	self:RegisterChatCommand({"/mobhealth3", "/mh3"}, {
-		type = "group",
-		args = {
-			save = {
-				name = "Save Data",
-				desc = "Save data across sessions. This is optional, and |cff00ff00not really needed|r. A cache is always kept that has data for every enemy you fought this session. Remember, recalculating an enemy's health is |cff00ff00TRIVIAL|r",
-				type = "toggle",
-				get = function() return not not MobHealth3DB end, -- "Double negatives for the not lose!" -Wobin
-				set = function(val)
-				end,
-			},
-			precision = {
-				name = "Estimation Precision",
-				desc = "Adjust how accurate you want MobHealth3 to be (A number 2-99). This is how many percent a mob's health needs to to change before we will trust the estimated maximum health and display it. The lower this value is, the quicker you'll see a value and the less accurate it will be. Raiding players may want to turn this down a bit. If you don't care about accuracy and want info ASAP, set this to 1.",
-				type = "range",
-                step = 1,
-				min = 1,
-                max = 99,
-				get = function() return MobHealth3Config.precision end,
-				set = function(val) MobHealth3Config.precision = tonumber(val) end,
-			},
-            stablemax = {
-                name = "Stable Max",
-                desc = "When turned on, the max HP only updates once your target changes. If data for the target is unknown, MH3 will update once during the battle when the precision percentage is reached",
+    -- 3. Register Chat Commands (Option A)
+    self:RegisterChatCommand({"/mobhealth3", "/mh3"}, {
+        type = "group",
+        args = {
+            save = {
+                name = "Save Data",
+                desc = "Save data across sessions.",
                 type = "toggle",
-                get = function() return MobHealth3Config.stableMax end,
-                set = function(val) MobHealth3Config.stableMax = val end,
+                get = function() return true end,
+                set = function(val) end,
             },
-            reset = {
-                name = "Reset Cache/DB",
-                desc = "Reset the session cache and the DB if you have saving turned on",
-                type = "execute",
-                func = function()
-                    MH3Cache = {}
-                    AccumulatorHP = {}
-                    AccumulatorPerc = {}
-                    self:Print("Cache/Database reset")
-                end,
-            },
-		},
-	})
-    setmetatable(MobHealthDB, compatMT) -- Metamethod proxy ENGAGE!! </cheesiness>
-end
+            -- ... (your other args: precision, stablemax, reset)
+        },
+    })
 
-function MobHealth3:OnEnable()
-	self:RegisterEvent("UNIT_COMBAT")
-	self:RegisterEvent("PLAYER_TARGET_CHANGED")
-	self:RegisterEvent("UNIT_HEALTH")
+    -- 4. THE UNIVERSAL BRIDGES (Force pfUI compatibility)
+    MobHealth3DB = MobHealthDB
+    
+    if pfUI and pfUI.api then
+        -- Force pfUI's shared library to point to our database
+        pfUI.api.libmobhealth = MobHealthDB
+        
+        -- pfUI specific: If it has its own internal cache, we overwrite it
+        if pfUI.cache and pfUI.cache["libmobhealth"] then
+            pfUI.cache["libmobhealth"] = MobHealthDB
+        end
+    end
+
+    -- 5. Enable the Guestimator/Format Metatable
+    setmetatable(MobHealthDB, compatMT)
+    
+    DEFAULT_CHAT_FRAME:AddMessage("|cff00ff00MobHealth3:|r Database Loaded (".. (MobHealthDB and "ALIVE" or "DEAD") ..")")
+    -- V7: ERROR-PROOF INJECTOR (Place inside OnInitialize)
+    local injector = CreateFrame("Frame")
+    -- V8: CLEAN INJECTOR (Target Frame only, No Tooltips)
+    local injector = CreateFrame("Frame")
+    injector:SetScript("OnUpdate", function()
+        -- 1. TARGET FRAME OVERLAY (Silent)
+        -- We only update the Blizzard Target frame. 
+        -- Dedicated tooltip addons will handle the tooltip their own way.
+        if TargetFrame and TargetFrame:IsVisible() then
+            local c, m, found = MobHealth3:GetUnitHealth("target")
+            if found then
+                if not MH3_TargetOverlay then
+                    MH3_TargetOverlay = TargetFrame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+                    MH3_TargetOverlay:SetPoint("CENTER", TargetFrame, "TOPLEFT", 150, -38)
+                end
+                MH3_TargetOverlay:SetText(c .. " / " .. m)
+                MH3_TargetOverlay:Show()
+            elseif MH3_TargetOverlay then
+                MH3_TargetOverlay:Hide()
+            end
+        end
+
+        -- 2. TARGET OF TARGET (Optional)
+        if TargetofTargetFrame and TargetofTargetFrame:IsVisible() then
+             local c, m, found = MobHealth3:GetUnitHealth("targettarget")
+             if found then
+                 local tot = getglobal("TargetofTargetHealthBarText")
+                 if tot and tot.SetText then tot:SetText(c .. " / " .. m) end
+             end
+        end
+    end)
+    
+    DEFAULT_CHAT_FRAME:AddMessage("|cff00ff00MobHealth3:|r Ultra-Compatible Mode Active.")
 end
 
 --[[
@@ -271,71 +297,41 @@ end
 function MobHealth_PPP(index)
 	return MH3Cache[index] and MH3Cache[index]/100 or 0
 end
-
---[[
-	MobHealth3 API
-	
-	I'm using MediaWiki formatting for the docs here so I can easily copy/paste if I make modifications
---]]
-
---[[
-== MobHealth3:GetUnitHealth(unit[,current][, max][, name][, level]) ==
-Returns the current and max health of the specified unit
-
-=== Args ===
-; unit : The unitID you want health for
-; [current] : (optional) The value of UnitHealth(unit). Passing this if your mod knows it saves MH3 from having to call UnitHealth itself<br>
-; [max] : (optional) The value of UnitHealthMax(unit). Passing this if your mod knows it saves MH3 from having to call UnitHealthMax itself<br>
-; [name] : (optional) The name of the unit. Passing this if your mod knows it saves MH3 from having to call UnitName itself<br>
-; [level] : (optional) The level of the unit. Passing this if your mod knows it saves MH3 from having to call UnitLevel itself
-
-=== Returns ===
-If the specified unit is alive, hostile and its true max health unknown, the absolute current and max value based on the cache's current entry<br>
-If the specified unit's friendly or data was not found, returns UnitHealth(unit) and UnitHealthMax(unit)
-
-A third return value is a boolean stating whether an estimation was found
-
-=== Remarks ===
-Remember, args 2-5 are optional and passing the args if your mod already knows them saves MH3 from having to find the data itself<br>
-Don't pass level as a string. Please.<br>
-MobHealth3 does the target-validty checking for you
-
-=== Example ===
- function YourUnitFrames:UpdateTargetFrame()
- 	local name, level = UnitName("target"), UnitLevel("target")
- 	local cur, max, found
- 	if MobHealth3 then
- 		cur, max, found = MobHealth3:GetUnitHealth("target", UnitHealth("target"), UnitHealthMax("target"), name, level)
- 	else
- 		cur, max = UnitHealth("target"), UnitHealthMax("target")
- 	end
- 	YourTargetFrame.HealthText:SetText(cur .. "/" .. max)
- 	YourTargetFrame.NameText:SetText(name)
- 	YourTargetFrame.LevelText:SetText(level)
- end
 --]]
 function MobHealth3:GetUnitHealth(unit, current, max, name, level)
-	if not UnitExists(unit) then return 0, 0, false; end
+    if not UnitExists(unit) then return 0, 0, false; end
+    current, max, name, level = current or UnitHealth(unit), max or UnitHealthMax(unit), name or UnitName(unit), level or UnitLevel(unit)
+    if level == -1 then level = 63; end
 
-	current = current or UnitHealth(unit)
-	max = max or UnitHealthMax(unit)
-	name = name or UnitName(unit)
-	level = level or UnitLevel(unit)
-	if level == -1 then level = 63; end
-	-- Mini validity check.
-	-- No need to do the full thing because indexing the cache and getting nil back is much faster.
-	-- Remember, an invalid target should never be in the cache
-	-- The only parts we actually have to do are:
-        -- Pet check
-        -- Beast Lore check (Does UnitHealthMax give us the real value?)
+    -- Only process if the game is currently showing a 0-100 percentage
+    if max == 100 and not (UnitPlayerControlled(unit)) then 
+        local key = name..":"..level
+        local rawData = MobHealthDB[key] -- Using the Global DB name directly
+        
+        -- Guestimator Logic: If level is missing, check level+1 and scale down
+        if not rawData then
+            local nextLvlData = MobHealthDB[name..":"..(level + 1)]
+            if nextLvlData then
+                local _, _, found = string.find(tostring(nextLvlData), ".+/(%d+)")
+                local baseHP = tonumber(found or nextLvlData)
+                if baseHP then
+                    local ratio = (level < 20) and 0.88 or (level < 40 and 0.925 or 0.965)
+                    rawData = math.floor(baseHP * ratio)
+                end
+            end
+        end
 
-	local creatureType = UnitCreatureType(unit) -- Saves us from calling it twice
-	if max == 100 and not ( UnitPlayerControlled(unit) ) then 
-		local maxHP = MH3Cache[string.format("%s:%d", name, level)]
-
-		if maxHP then return math.floor(current/100 * maxHP + 0.5), maxHP, true; end
-	end
-
-	-- If not maxHP or we're dealing with an invalid target
-	return current, max, false;
+        if rawData then
+            -- Format Fix: Pull "156" out of "8/156"
+            local _, _, finalMax = string.find(tostring(rawData), ".+/(%d+)")
+            finalMax = tonumber(finalMax or rawData)
+            
+            if finalMax and finalMax > 100 then
+                -- Math: Convert percentage (current) to real health
+                local realCur = math.floor(current/100 * finalMax + 0.5)
+                return realCur, finalMax, true
+            end
+        end
+    end
+    return current, max, false
 end

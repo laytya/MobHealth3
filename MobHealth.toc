@@ -1,16 +1,10 @@
-## Interface: 11200
-## Author: Neronix & PapaRogue - Updated to K4 and DB restore by Mirasu
-## Title: MobHealth3 Kronos3 Edition
-## Version: 3.4
-## OptionalDeps: Ace2, MobInfo2, pfUI, LunaUnitFrames
-## Notes: Exact Mob Health.
-## SavedVariables: MobHealth3Config
-Libs\AceLibrary\AceLibrary.lua
-Libs\AceOO-2.0\AceOO-2.0.lua
-Libs\AceEvent-2.0\AceEvent-2.0.lua
-Libs\AceAddon-2.0\AceAddon-2.0.lua
-Libs\AceConsole-2.0\AceConsole-2.0.lua
-Libs\AceDebug-2.0\AceDebug-2.0.lua
-Libs\AceDB-2.0\AceDB-2.0.lua
+## Interface: 11402
+## Author: Neronix & PapaRogue - Updated to K4 and DB restore by Mirasu - Modernized for 1.14.x
+## Title: MobHealth3 Kronos Edition
+## Version: 4.0
+## OptionalDeps: pfUI, MobInfo2, LunaUnitFrames
+## Notes: Exact mob health for Kronos (TrinityCore 1.12) on the modern client.
+## SavedVariables: MobHealth3SavedDB
+
 MobHealth3.lua
 Data.lua

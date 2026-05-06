@@ -12,7 +12,8 @@ The included DB contains every mob in the game with Kronos values. It only conta
 * **Luna** - Use the `[smarthealth]` Tag in the Target Health Bar 
 * **Blizzard Frames** - This is now baked in and does not require a separate file.
 * **Compatible with SuperWoW:** It was causing some issues.
-* **Nameplate Compatibility:** Tested on my fork of Kui Nameplates
+* **Nameplate Compatibility:**  Kui Nameplates main fork updated
+  
 
 ---
 
